@@ -5,7 +5,7 @@
       <paths name="WiredRaspberrypi@172.17.21.2:22">
         <serverdata>
           <mappings>
-            <mapping deploy="/tmp/pycharm_project_968" local="$PROJECT_DIR$" />
+            <mapping deploy="/home/pi/packages/paper-ariplane-launcher" local="$PROJECT_DIR$" />
           </mappings>
         </serverdata>
       </paths>
