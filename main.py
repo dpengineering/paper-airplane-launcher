@@ -2,6 +2,7 @@ import sys
 import serial
 import time
 import os
+import math
 
 from dpeaDPi.DPiComputer import DPiComputer
 from dpeaDPi.DPiPowerDrive import DPiPowerDrive
@@ -68,21 +69,6 @@ def safe_launch():
         return False
 
 
-"""
-# print(safe_launch(port1))
-            if safe_launch(port1) < 1500:
-                print("Object Detected In Flight Path...")
-            else:
-            
-            port1
-            
-            port1
-            
-            port1
-            
-            port"""
-
-
 def button_action(wait_tim):
     while True:
         button_value = dpiComputer.readRGBButtonSwitch(0)  # read the button
@@ -102,21 +88,71 @@ def button_action(wait_tim):
             dpiComputer.writeRGBButtonColor(0, red, green, blue)  # set button to Green if not pushed
 
 
-def encoder_action(axis1):
+def encoder_action():
+    adjustedMaxPow = 90
+    adjustedMinPow = 0
+    deltaPow = 3
+    power = 0
+    previousPos = dpiComputer.readEncoder(0)
+    num = 1
+    correctedDeltaPos = 1
+    maxpos = 0
+    minpos = 0
     while True:
-        val = dpiComputer.readEncoder(0)
-        vel = val / 10
-        if val >= 0:
-            axis1.set_vel(vel)
-            # print(axis1.get_vel())
+        currentPos = dpiComputer.readEncoder(0) / 20
+        print("Current Pos" + str(currentPos))
+        deltaPos = currentPos - previousPos
+        if currentPos > maxpos:
+            maxpos = currentPos
+        if currentPos < minpos:
+            minpos = currentPos
+        if num % 5 == 0:
+            if deltaPos == 0 and currentPos > 0 and currentPos == maxpos:  # no movement + positive encoder value
+                if power + 10 > 90:
+                    power = 90
+                else:
+                    power += 10
+                correctedDeltaPos = 0
+            elif deltaPos == 0 and currentPos <= 0 and currentPos == minpos:  # no movement + negative encoder value
+                if power - 10 < 0:
+                    power = 0
+                else:
+                    power -= 10
+                correctedDeltaPos = 0
+        elif currentPos < previousPos:
+            correctedDeltaPos = -1
+        elif currentPos > previousPos:
+            correctedDeltaPos = 1
         else:
-            axis1.set_vel(0)
-            # print(axis1.get_vel())
+            correctedDeltaPos = 0
+
+        if correctedDeltaPos == 0:
+            od.axis0.controller.input_vel = power
+            print("No change detected... setting power to absolute extrema")
+        elif correctedDeltaPos >= 1:
+            if currentPos >= adjustedMaxPow or power >= adjustedMaxPow:
+                print("power @ MAX")
+                power = 90
+            else:
+                power += deltaPow
+            od.axis0.controller.input_vel = power
+        elif correctedDeltaPos <= -1:
+            if currentPos <= adjustedMinPow or power <= adjustedMinPow:
+                print("power @ MIN")
+                power = 0
+            else:
+                power -= deltaPow
+            od.axis0.controller.input_vel = power
+
+        previousPos = currentPos
+        print("Power: ")
+        print(power)
+        num += 1
 
 
-def encoder_action_thread(ax, ):
+def encoder_action_thread():
     Thread(target=button_action, args=(3,)).start()
-    Thread(target=encoder_action, args=(ax,)).start()
+    Thread(target=encoder_action, args=()).start()
 
 
 if __name__ == "__main__":
@@ -141,35 +177,40 @@ if __name__ == "__main__":
     ax1.set_calibration_current(20)
     ax0.set_gains()
     ax1.set_gains()
+    od.axis0.controller.config.vel_integrator_gain = 0.16
+    od.axis1.controller.config.vel_integrator_gain = 0.16
 
-    od.axis1.controller.config.axis_to_mirror = 0
-    od.axis1.controller.config.mirror_ratio = -1.0
     od.axis0.requested_state = AXIS_STATE_FULL_CALIBRATION_SEQUENCE
-    od.axis1.requested_state = AXIS_STATE_FULL_CALIBRATION_SEQUENCE
-    od.axis0.requested_state = AXIS_STATE_CLOSED_LOOP_CONTROL
-    od.axis1.requested_state = AXIS_STATE_CLOSED_LOOP_CONTROL
-    od.axis1.controller.config.input_mode = INPUT_MODE_MIRROR
-    od.axis0.controller.config.input_mode = INPUT_MODE_PASSTHROUGH
-    od.axis0.controller.config.control_mode = CONTROL_MODE_VELOCITY_CONTROL
-    od.axis1.controller.config.control_mode = CONTROL_MODE_VELOCITY_CONTROL
-    od.axis0.controller.input_vel = 1
-
-    clockDivisor = 360
-    dpiComputer.setEncoderClockDivisor(clockDivisor)
 
     if ax0.is_calibrated and ax1.is_calibrated():
         print("calibrated motors")
     else:
+        print("calibrating...")
         ax0.calibrate()
         ax1.calibrate()
-        print("calibrating...")
+
+    od.axis1.controller.config.axis_to_mirror = 0
+    od.axis1.controller.config.mirror_ratio = -1.0
+    od.axis1.requested_state = AXIS_STATE_CLOSED_LOOP_CONTROL
+    od.axis0.requested_state = AXIS_STATE_CLOSED_LOOP_CONTROL
+    od.axis1.controller.config.input_mode = INPUT_MODE_MIRROR
+    od.axis0.controller.config.input_mode = INPUT_MODE_VEL_RAMP
+    od.axis0.controller.config.control_mode = CONTROL_MODE_VELOCITY_CONTROL
+    od.axis0.controller.config.vel_ramp_rate = 5
+    #  od.axis0.controller.config.vel_ramp_rate = 5
+
+    """od.axis1.requested_state = AXIS_STATE_CLOSED_LOOP_CONTROL"""
+
+    dump_errors(od)
+
+    clockDivisor = 360
+    dpiComputer.setEncoderClockDivisor(clockDivisor)
 
     """Maxbotix Sonar"""
     # Reads serial data from Maxbotix ultrasonic rangefinders
     # Gracefully handles most common serial data glitches
     # Use as an importable module with "import MaxSonarTTY"
     # Returns an integer value representing distance to target in millimeters
-
     serialDevice = "/dev/ttyUSB0"  # default for RaspberryPi
     maxwait = 3  # seconds to try for a good reading before quitting
 
@@ -177,9 +218,9 @@ if __name__ == "__main__":
     print("Velocity Limit: ", ax0.get_vel_limit())
 
     try:
-        # start_liveplotter(lambda: [ax0.axis.encoder.vel_estimate, ax0.axis.controller.input_vel])
-        encoder_action_thread(ax0)  # using axis zero
-        # while True:
+        encoder_action_thread()  # using axis zero
+        while True:
+            dump_errors(od)
         # sleep(10)
     finally:
         ax0.idle()

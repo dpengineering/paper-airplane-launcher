@@ -117,7 +117,7 @@ class ODriveAxis:
     def get_vel_limit(self):
         return self.axis.controller.config.vel_limit
 
-    # Uses ramped velocity control where the speed, vel [turns/s], will be gradually reached
+    # Uses  velocity control where the speed, vel [turns/s], will be gradually reached
     # with acceleration, accel [turns/s^2].
     def set_ramped_vel(self, vel, accel):
         assert accel >= 0, "Acceleration must be positive"
