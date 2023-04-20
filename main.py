@@ -100,7 +100,7 @@ def encoder_action():
     minpos = 0
     while True:
         currentPos = dpiComputer.readEncoder(0) / 20
-        print("Current Pos" + str(currentPos))
+        print("Current Pos: " + str(currentPos))
         deltaPos = currentPos - previousPos
         if currentPos > maxpos:
             maxpos = currentPos
@@ -130,14 +130,14 @@ def encoder_action():
             od.axis0.controller.input_vel = power
             print("No change detected... setting power to absolute extrema")
         elif correctedDeltaPos >= 1:
-            if currentPos >= adjustedMaxPow or power >= adjustedMaxPow:
+            if currentPos >= maxpos or power >= adjustedMaxPow:
                 print("power @ MAX")
                 power = 90
             else:
                 power += deltaPow
             od.axis0.controller.input_vel = power
         elif correctedDeltaPos <= -1:
-            if currentPos <= adjustedMinPow or power <= adjustedMinPow:
+            if currentPos <= minpos or power <= adjustedMinPow:
                 print("power @ MIN")
                 power = 0
             else:
@@ -199,8 +199,6 @@ if __name__ == "__main__":
     od.axis0.controller.config.vel_ramp_rate = 5
     #  od.axis0.controller.config.vel_ramp_rate = 5
 
-    """od.axis1.requested_state = AXIS_STATE_CLOSED_LOOP_CONTROL"""
-
     dump_errors(od)
 
     clockDivisor = 360
@@ -220,7 +218,7 @@ if __name__ == "__main__":
     try:
         encoder_action_thread()  # using axis zero
         while True:
-            dump_errors(od)
+            hah = 0
         # sleep(10)
     finally:
         ax0.idle()
