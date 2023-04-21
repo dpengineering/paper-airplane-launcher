@@ -11,23 +11,40 @@ from serial import Serial
 from time import sleep
 from threading import Thread
 from odrive_helpers import *
-from odrive.utils import start_liveplotter
 
 """Main Functions"""
 
 
-def launch_plane(wait_time):
-    dpiPowerDrive.pulseDriverOn(0, 200)
+def launch_plane(wait_time, pulse_time):
+    """
+    Launch the plane by contracting the motors
+    :param wait_time: downtime in seconds for button action
+    :param pulse_time: time in milliseconds to pulse the PowerDriver
+    :return: None
+    *Button will stay red and be unusable for specified wait_time*
+    """
+    dpiPowerDrive.pulseDriverOn(0, pulse_time)
     sleep(wait_time)
 
 
 def print_info(ax: ODriveAxis):
+    """
+    Print various info for specified ODrive axis
+    :param ax: ODriveAxis: the axis to investigate
+    :return: None
+    *these values were initialized at lines 188 and 189*
+    """
     print("Current Limit: ", ax.get_current_limit())
     print("Velocity: ", ax.get_vel())
     print("Velocity Limit: ", ax.get_vel_limit())
 
 
-def measure(portName):
+def check_obstruction(portName):
+    """
+    Interpreting data bytes from MaxBotix sensor into an integer
+    :param portName: the port MaxBotix sensor is connected to
+    :return: the distance in millimeters to an object in front of the sensor as an integer
+    """
     global maxwait
     ser = Serial(portName, 57600, 8, 'N', 1, timeout=3)
     timeStart = time()
@@ -61,15 +78,25 @@ def measure(portName):
     raise RuntimeError("Expected serial data not received")
 
 
-def safe_launch():
-    measurement = measure(serialDevice)
-    if measurement > 2000:
+def safe_launch(safety_buffer_in_mm):
+    """
+    Check for any objects in front of the MaxBotix sensor
+    :param safety_buffer_in_mm: distance to keep clear in order for motors to contract
+    :return: True if clear, False if crowded
+    """
+    measurement = check_obstruction(serialDevice)
+    if measurement > safety_buffer_in_mm:
         return True
     else:
         return False
 
 
-def button_action(wait_tim):
+def button_action(wait_time):
+    """
+    Changes color on button press, launches plane if it is safe to do so
+    :param wait_time: downtime in seconds for button action
+    :return: None
+    """
     while True:
         button_value = dpiComputer.readRGBButtonSwitch(0)  # read the button
         if button_value:
@@ -77,8 +104,8 @@ def button_action(wait_tim):
             green = 0
             blue = 0
             dpiComputer.writeRGBButtonColor(0, red, green, blue)  # set button to RED if pushed
-            if safe_launch():
-                launch_plane(wait_tim)
+            if safe_launch(2000):
+                launch_plane(wait_time, 200)
             else:
                 print("Obstruction Detected in Flight Path")
         else:
@@ -88,7 +115,14 @@ def button_action(wait_tim):
             dpiComputer.writeRGBButtonColor(0, red, green, blue)  # set button to Green if not pushed
 
 
-def encoder_action():
+def encoder_action(encoder_sens):
+    """
+    Passing rapidly-updating encoder values to set the velocity of the motors
+    :param encoder_sens: the divisor of 360 to make encoder produce smaller values
+    :return: None
+    *Finds if the current position is greater or less than previous position, increments the speed in response to this*
+    *no change in encoder position + encoder reached its max position, the velocity will rise to max automatically*
+    """
     adjustedMaxPow = 90
     adjustedMinPow = 0
     deltaPow = 3
@@ -99,7 +133,8 @@ def encoder_action():
     maxpos = 0
     minpos = 0
     while True:
-        currentPos = dpiComputer.readEncoder(0) / 20
+        currentPos = (dpiComputer.readEncoder(0) / encoder_sens)  # reduces sensitivity of encoder
+        currentPos = currentPos * -1  # make clockwise turn be positive and CC turn be negative
         print("Current Pos: " + str(currentPos))
         deltaPos = currentPos - previousPos
         if currentPos > maxpos:
@@ -107,13 +142,13 @@ def encoder_action():
         if currentPos < minpos:
             minpos = currentPos
         if num % 5 == 0:
-            if deltaPos == 0 and currentPos > 0 and currentPos == maxpos:  # no movement + positive encoder value
+            if deltaPos == 0 and currentPos > 0 and currentPos == maxpos:  # no movement + encoder max position
                 if power + 10 > 90:
                     power = 90
                 else:
                     power += 10
                 correctedDeltaPos = 0
-            elif deltaPos == 0 and currentPos <= 0 and currentPos == minpos:  # no movement + negative encoder value
+            elif deltaPos == 0 and currentPos <= 0 and currentPos == minpos:  # no movement + encoder min position
                 if power - 10 < 0:
                     power = 0
                 else:
@@ -126,17 +161,17 @@ def encoder_action():
         else:
             correctedDeltaPos = 0
 
-        if correctedDeltaPos == 0:
+        if correctedDeltaPos == 0:  # No encoder change
             od.axis0.controller.input_vel = power
             print("No change detected... setting power to absolute extrema")
-        elif correctedDeltaPos >= 1:
+        elif correctedDeltaPos >= 1:  # encoder increased value
             if currentPos >= maxpos or power >= adjustedMaxPow:
                 print("power @ MAX")
                 power = 90
             else:
                 power += deltaPow
             od.axis0.controller.input_vel = power
-        elif correctedDeltaPos <= -1:
+        elif correctedDeltaPos <= -1:  # encoder decreased value
             if currentPos <= minpos or power <= adjustedMinPow:
                 print("power @ MIN")
                 power = 0
@@ -152,7 +187,7 @@ def encoder_action():
 
 def encoder_action_thread():
     Thread(target=button_action, args=(3,)).start()
-    Thread(target=encoder_action, args=()).start()
+    Thread(target=encoder_action, args=(20,)).start()
 
 
 if __name__ == "__main__":
@@ -180,7 +215,8 @@ if __name__ == "__main__":
     od.axis0.controller.config.vel_integrator_gain = 0.16
     od.axis1.controller.config.vel_integrator_gain = 0.16
 
-    od.axis0.requested_state = AXIS_STATE_FULL_CALIBRATION_SEQUENCE
+    # od.axis0.requested_state = AXIS_STATE_FULL_CALIBRATION_SEQUENCE
+    # od.axis1.requested_state = AXIS_STATE_FULL_CALIBRATION_SEQUENCE
 
     if ax0.is_calibrated and ax1.is_calibrated():
         print("calibrated motors")
@@ -189,6 +225,7 @@ if __name__ == "__main__":
         ax0.calibrate()
         ax1.calibrate()
 
+    """Mirroring axis1 to axis0"""
     od.axis1.controller.config.axis_to_mirror = 0
     od.axis1.controller.config.mirror_ratio = -1.0
     od.axis1.requested_state = AXIS_STATE_CLOSED_LOOP_CONTROL
@@ -197,7 +234,6 @@ if __name__ == "__main__":
     od.axis0.controller.config.input_mode = INPUT_MODE_VEL_RAMP
     od.axis0.controller.config.control_mode = CONTROL_MODE_VELOCITY_CONTROL
     od.axis0.controller.config.vel_ramp_rate = 5
-    #  od.axis0.controller.config.vel_ramp_rate = 5
 
     dump_errors(od)
 
@@ -209,16 +245,16 @@ if __name__ == "__main__":
     # Gracefully handles most common serial data glitches
     # Use as an importable module with "import MaxSonarTTY"
     # Returns an integer value representing distance to target in millimeters
-    serialDevice = "/dev/ttyUSB0"  # default for RaspberryPi
+    serialDevice = "/dev/ttyUSB0"  # MaxBotix sensor plugged into USB 0 on RPi
     maxwait = 3  # seconds to try for a good reading before quitting
 
     print("Current Limit: ", ax0.get_current_limit())
     print("Velocity Limit: ", ax0.get_vel_limit())
 
     try:
-        encoder_action_thread()  # using axis zero
+        encoder_action_thread()
         while True:
-            hah = 0
+            wok = 0
         # sleep(10)
     finally:
         ax0.idle()
