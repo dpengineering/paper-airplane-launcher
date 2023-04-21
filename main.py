@@ -32,7 +32,7 @@ def print_info(ax: ODriveAxis):
     Print various info for specified ODrive axis
     :param ax: ODriveAxis: the axis to investigate
     :return: None
-    *these values were initialized at lines 188 and 189*
+    *these values were initialized at lines 208 and 209*
     """
     print("Current Limit: ", ax.get_current_limit())
     print("Velocity: ", ax.get_vel())
