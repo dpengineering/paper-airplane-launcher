@@ -2,16 +2,16 @@
 
 ## Gadgets
 
-###Maxbotix Ultrasonic Sensor
+### Maxbotix Ultrasonic Sensor
 A sensor deployed onto the front of the exhibit requiring an open area in order to permit a launch. The safe area can be adjusted within the safe_launch method
 
-###ODrive
+### ODrive
 An open source DC motor controller that manages two motors spinning in opposite directions atop the launcher. 
 
-###LED Button
+### LED Button
 A highly responsive button attached to the front of the exhibit. Defaut to green but switches to red during PowerDriver cooldown(2 seconds).
 
-###Rotary Encoder
+### Rotary Encoder
 A 360 degree encoder that scommunicates directly to the odrive in order to control the speed of the motors.
 
 ## Main Methods
