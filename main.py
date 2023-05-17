@@ -112,7 +112,10 @@ def button_action(wait_time):
             red = 0
             green = 240
             blue = 0
-            dpiComputer.writeRGBButtonColor(0, red, green, blue)  # set button to Green if not pushed
+            if not safe_launch(2000):
+                dpiComputer.writeRGBButtonColor(0, 255, 165, 0)  # # set button to orange if not pushed and unsafe
+            else:
+                dpiComputer.writeRGBButtonColor(0, red, green, blue)  # set button to Green if not pushed but safe
 
 
 def encoder_action(encoder_sens):
